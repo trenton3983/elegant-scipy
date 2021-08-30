@@ -46,9 +46,11 @@ def rpkm(counts, lengths):
     normed : array, shape (N_genes, N_samples)
         The RPKM normalized counts matrix.
     """
-    N = np.sum(counts, axis=0)  # sum each column to get total reads per sample
+    # First, convert counts to float to avoid overflow when multiplying by
+    # 1e9 in the RPKM formula
+    C = counts.astype(float)
+    N = np.sum(C, axis=0)  # sum each column to get total reads per sample
     L = lengths
-    C = counts
 
     normed = 1e9 * C / (N[np.newaxis, :] * L[:, np.newaxis])
 
@@ -362,7 +364,7 @@ print(outer.shape)
 
 You can see for yourself that `outer[i, j] = x[i] * y[j]` for all `(i, j)`.
 
-This was accomplished by NumPy's [broadcasting rules](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html), which implicitly expand dimensions of size 1 in one array to match the corresponding dimension of the other array.
+This was accomplished by NumPy's [broadcasting rules](https://numpy.org/devdocs/user/basics.broadcasting.html), which implicitly expand dimensions of size 1 in one array to match the corresponding dimension of the other array.
 Don't worry, we will talk about these rules in more detail later in this chapter.
 
 As we will see in the rest of the chapter, as we explore real data, broadcasting is extremely valuable for real-world calculations on arrays of data.
@@ -371,7 +373,7 @@ It allows us to express complex operations concisely and efficiently.
 ## Exploring a Gene Expression Dataset
 
 The dataset that we'll be using is an RNAseq experiment of skin cancer samples from The Cancer Genome Atlas (TCGA) project (http://cancergenome.nih.gov/).
-We've already cleaned and sorted the data for you, so you can just use `data/counts.txt`
+We've already cleaned and sorted the data for you, so you can use `data/counts.txt.bz2`
 in the book repository.
 In Chapter 2 we will be using this gene expression data to predict mortality in skin cancer patients, reproducing a simplified version of [Figures 5A and 5B](http://www.cell.com/action/showImagesData?pii=S0092-8674%2815%2900634-0) of a [paper](http://dx.doi.org/10.1016/j.cell.2015.05.044) from the TCGA consortium.
 But first we need to get our heads around the biases in our data, and think about how we could improve it.
@@ -393,12 +395,13 @@ In later chapters we will see a bit more of pandas, but for details, read *Pytho
 for Data Analysis* (O'Reilly) by the creator of pandas, Wes McKinney.
 
 ```python
+import bz2
 import numpy as np
 import pandas as pd
 
 # Import TCGA melanoma data
-filename = 'data/counts.txt'
-with open(filename, 'rt') as f:
+filename = 'data/counts.txt.bz2'
+with bz2.open(filename, 'rt') as f:
     data_table = pd.read_csv(f, index_col=0) # Parse file with pandas
 
 print(data_table.iloc[:5, :5])
@@ -511,10 +514,11 @@ import matplotlib.pyplot as plt
 plt.style.use('style/elegant.mplstyle')
 ```
 
+
 > **A Quick Note on Plotting {.callout}**
 >
 > The preceding code does a few neat things to make our plots prettier.
-
+>
 > First, `%matplotlib inline` is a Jupyter notebook [magic
 > command](http://ipython.org/ipython-doc/dev/interactive/tutorial.html#magics-explained),
 > that simply makes all plots appear in the notebook rather than pop up a new
@@ -598,7 +602,7 @@ def reduce_xaxis_labels(ax, factor):
 ```
 
 ```python
-# Bar plot of expression counts by individual
+# Box plot of expression counts by individual
 fig, ax = plt.subplots(figsize=(4.8, 2.4))
 
 with plt.style.context('style/thinner.mplstyle'):
@@ -777,7 +781,8 @@ def binned_boxplot(x, y, *,  # check out this Python 3 exclusive! (*see tip box)
 
     # Adjust the axis names
     ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel);
+    ax.set_ylabel(ylabel)
+    return ax
 ```
 
 
@@ -827,7 +832,7 @@ And we plot the counts as a function of gene length:
 
 ```python
 with plt.style.context('style/thinner.mplstyle'):
-    binned_boxplot(x=log_gene_lengths, y=mean_log_counts)
+    binned_boxplot(x=log_gene_lengths, y=mean_log_counts);
 ```
 
 We can see in the previous image that the longer a gene is, the higher its measured counts! As
@@ -866,7 +871,7 @@ If we just divide by the number of mapped reads we get:
 $ \frac{10^3C}{LN} $
 
 But biologists like thinking in millions of reads so that the numbers don't get
-too big. Counting per million reads we get:
+too small. Counting per million reads we get:
 
 $ \frac{10^3C}{L(N/10^6)} = \frac{10^9C}{LN}$
 
@@ -883,15 +888,66 @@ N = np.sum(counts, axis=0)  # sum each column to get total reads per sample
 L = gene_lengths  # lengths for each gene, matching rows in `C`
 ```
 
-First, we multiply by 10^9.
+> **Tip: Numbers and computers {.callout}**
+>
+> We can't cover everything you need to know about numeric representations
+> in computers in just a tip box, but you *should* know that numbers are
+> represented as "n-bit" "integer" or "floating point" numbers in
+> the computer. As an example, a 32-bit precision integer is an integer
+> number (no decimal point) represented as a string of 0s and 1s of width
+> 32. And, just like you can't represent a number larger than 9999 ($10^4-1$)
+> if you have a length-4 array of numbers, you can't represent a number
+> larger than $2^32 - 1 \approx 4 \times 10^9$ if you are using 32-bit
+> integers, or $2^31 - 1 \approx 2 \times 10^9$ if you want to have negative
+> numbers (because you need one of the 32 bits to indicate sign).
+>
+> So what happens when you go over that limit? You can try it with the
+> following code:
+>
+>     >>> 2**31 - 1
+>     2147483647
+>     >>> np.array([2147483647], dtype=np.int32) + 1
+>     array([-2147483648], dtype=int32)
+>
+> As you can see, it just ticks over, without warning!
+>
+> Floating point numbers can express much larger numbers, at the cost of some
+> precision:
+>
+>     >>> np.float32(2**96)
+>     7.9228163e+28
+>     >>> np.float32(2**96) == np.float32(2**96 + 1)
+>     True
+>
+> As mentioned, we can't go into all the subtleties of dealing with these
+> errors, but it's probably what we are avoiding if you see us converting an
+> array with `.astype(float)`!
+>
+> The paper "What Every Computer Scientist Should Know About Floating-Point
+> Arithmetic", by David Goldberg, contains a lot of detail about this, if you
+> are curious. A free version is available at
+> https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
+> . Somewhat more amusingly, try:
+>
+>     >>> np.sum(np.array([0.1 + 0.2], dtype=np.float64))
+>     0.30000000000000004
+>
+> Then, copy that value to go to http://0.30000000000000004.com, which
+> contains a very concise explanation of the problem and links to further
+> resources, including the Goldberg paper.
+
+First, we multiply by $10^9$.
 Because counts (C) is an ndarray, we can use broadcasting.
 If we multiple an ndarray by a single value,
 that value is broadcast over the entire array.
 
 ```python
-# Multiply all counts by 10^9
-C_tmp = 10^9 * C
+# Multiply all counts by $10^9$. Note that ^ in Python is bitwise-or.
+# Exponentiation is denoted by `**`
+# Avoid overflow by converting C to float, see tip "Numbers and computers"
+C_tmp = 10**9 * C.astype(float)
 ```
+
 Next we need to divide by the gene length.
 Broadcasting a single value over a 2D array was pretty clear.
 We were just multiplying every element in the array by the value.
@@ -1021,9 +1077,9 @@ def rpkm(counts, lengths):
     normed : array, shape (N_genes, N_samples)
         The RPKM normalized counts matrix.
     """
-    N = np.sum(counts, axis=0)  # sum each column to get total reads per sample
+    C = counts.astype(float)  # use float to avoid overflow with `1e9 * C`
+    N = np.sum(C, axis=0)  # sum each column to get total reads per sample
     L = lengths
-    C = counts
 
     normed = 1e9 * C / (N[np.newaxis, :] * L[:, np.newaxis])
 
@@ -1045,7 +1101,8 @@ mean_log_counts = np.mean(log_counts, axis=1)
 log_gene_lengths = np.log(gene_lengths)
 
 with plt.style.context('style/thinner.mplstyle'):
-    binned_boxplot(x=log_gene_lengths, y=mean_log_counts)
+    # Keep track of axis object so that the next plot can have the same scale
+    unnormalized_ax = binned_boxplot(x=log_gene_lengths, y=mean_log_counts)
 ```
 <!-- caption text="The relationship between gene length and average expression before RPKM normalization (log scale)" -->
 
@@ -1057,7 +1114,9 @@ mean_log_counts = np.mean(log_counts, axis=1)
 log_gene_lengths = np.log(gene_lengths)
 
 with plt.style.context('style/thinner.mplstyle'):
-    binned_boxplot(x=log_gene_lengths, y=mean_log_counts)
+    rpkm_ax = binned_boxplot(x=log_gene_lengths, y=mean_log_counts)
+    # Set the axis limits to those of the previous plot for visual comparison
+    rpkm_ax.set_ylim(unnormalized_ax.get_ylim())
 ```
 
 You can see that the mean expression counts have flattened quite a bit,
@@ -1070,7 +1129,8 @@ We've already seen that longer genes have higher counts, but this doesn't mean t
 Let's choose a short gene and a long gene and compare their counts before and after RPKM normalization to see what we mean.
 
 ```python
-gene_idxs = np.array([80, 186])
+gene_idxs = np.nonzero((gene_names == 'RPL24') |
+                       (gene_names == 'TXNDC5'))
 gene1, gene2 = gene_names[gene_idxs]
 len1, len2 = gene_lengths[gene_idxs]
 gene_labels = [f'{gene1}, {len1}bp', f'{gene2}, {len2}bp']

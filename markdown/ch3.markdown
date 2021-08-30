@@ -44,7 +44,7 @@ a filter from SciPy's N-dimensional image processing submodule, `ndimage`.
 ```python
 import networkx as nx
 import numpy as np
-from scipy import ndimage as nd
+from scipy import ndimage as ndi
 
 def add_edge_filter(values, graph):
     center = values[len(values) // 2]
@@ -757,7 +757,7 @@ NetworkX makes straightforward work out of getting the largest strongly
 connected component from our `wormbrain` network:
 
 ```python
-sccs = nx.strongly_connected_component_subgraphs(wormbrain)
+sccs = (wormbrain.subgraph(c) for c in nx.strongly_connected_components(wormbrain))
 giantscc = max(sccs, key=len)
 print(f'The largest strongly connected component has '
       f'{giantscc.number_of_nodes()} nodes, out of '
@@ -886,7 +886,7 @@ A Region Adjacency Graph (RAG) is a representation of an image that is useful
 for *segmentation*: the division of images into meaningful regions (or
 *segments*). If you've seen Terminator 2, you've seen segmentation:
 
-![Terminator vision](https://raw.githubusercontent.com/scikit-image/skimage-tutorials/master/2014-scipy/images/terminator-vision.png)
+![Terminator vision](../images/terminator-vision.png)
 
 Segmentation is one of those problems that humans do trivially, all the time,
 without thinking, whereas computers have a hard time of it. To
@@ -1075,7 +1075,7 @@ arguments to the filter function, and we can use that to build the graph:
 ```python
 import networkx as nx
 import numpy as np
-from scipy import ndimage as nd
+from scipy import ndimage as ndi
 
 def add_edge_filter(values, graph):
     center = values[len(values) // 2]
@@ -1091,12 +1091,12 @@ def build_rag(labels, image):
     _ = ndi.generic_filter(labels, add_edge_filter, footprint=footprint,
                            mode='nearest', extra_arguments=(g,))
     for n in g:
-        g.node[n]['total color'] = np.zeros(3, np.double)
-        g.node[n]['pixel count'] = 0
+        g.nodes[n]['total color'] = np.zeros(3, np.double)
+        g.nodes[n]['pixel count'] = 0
     for index in np.ndindex(labels.shape):
         n = labels[index]
-        g.node[n]['total color'] += image[index]
-        g.node[n]['pixel count'] += 1
+        g.nodes[n]['total color'] += image[index]
+        g.nodes[n]['pixel count'] += 1
     return g
 ```
 
@@ -1120,10 +1120,10 @@ Now, we can use everything we've learned to segment the tiger in the image above
 ```python
 g = build_rag(seg, tiger)
 for n in g:
-    node = g.node[n]
+    node = g.nodes[n]
     node['mean'] = node['total color'] / node['pixel count']
 for u, v in g.edges():
-    d = g.node[u]['mean'] - g.node[v]['mean']
+    d = g.nodes[u]['mean'] - g.nodes[v]['mean']
     g[u][v]['weight'] = np.linalg.norm(d)
 ```
 
@@ -1168,7 +1168,7 @@ are interested in image analysis, look it up!
 
 [^nxdoc]: http://networkx.github.io/documentation/latest/reference/index.html
 
-[^bwcdoc]: http://networkx.github.io/documentation/latest/reference/generated/networkx.algorithms.centrality.betweenness_centrality.html
+[^bwcdoc]: https://networkx.github.io/documentation/latest/reference/algorithms/generated/networkx.algorithms.centrality.betweenness_centrality.html
 
 [^bsdstiger]: http://www.eecs.berkeley.edu/Research/Projects/CS/vision/bsds/BSDS300/html/dataset/images/color/108073.html
 

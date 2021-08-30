@@ -93,12 +93,14 @@ As in Chapter 1, first we will use pandas to make our job of reading in the data
 First we will read in our counts data as a pandas table.
 
 ```python
+import bz2
 import numpy as np
 import pandas as pd
 
 # Import TCGA melanoma data
-filename = 'data/counts.txt'
-data_table = pd.read_csv(filename, index_col=0)  # Parse file with pandas
+filename = 'data/counts.txt.bz2'
+with bz2.open(filename, mode='rt') as f:
+    data_table = pd.read_csv(f, index_col=0)  # Parse file with pandas
 
 print(data_table.iloc[:5, :5])
 ```
@@ -109,7 +111,7 @@ Now let's put our counts in a NumPy array.
 
 ```python
 # 2D ndarray containing expression counts for each gene in each individual
-counts = data_table.values
+counts = data_table.to_numpy()
 ```
 
 ## Gene Expression Distribution Differences Between Individuals
@@ -554,9 +556,9 @@ def plot_cluster_survival_curves(clusters, sample_names, patients,
         clust_samples = [sample_names[i] for i in clust_samples
                          if sample_names[i] in patients.index]
         patient_cluster = patients.loc[clust_samples]
-        survival_times = patient_cluster['melanoma-survival-time'].values
+        survival_times = patient_cluster['melanoma-survival-time'].to_numpy()
         if censor:
-            censored = ~patient_cluster['melanoma-dead'].values.astype(bool)
+            censored = ~patient_cluster['melanoma-dead'].to_numpy(dtype=bool)
         else:
             censored = None
         stimes, sfracs = survival_distribution_function(survival_times,
